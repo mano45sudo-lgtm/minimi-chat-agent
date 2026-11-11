@@ -1,59 +1,51 @@
-# How Minimi works, and why
+# Minimi: design
 
 ## The idea
+All three example questions are about the past: *what did I ask, what did we shortlist, has it changed since?* Web search is built into every AI provider now. Remembering correctly and re-checking old answers isn't. So that's where the effort went.
 
-The three example questions in the brief, *"On Monday we shortlisted…"*, *"What did I ask you on 3 November?"* and *"Last Tuesday I asked about Postgres… has pricing changed?"*, aren't really search questions. They're about **memory and time**: what did we talk about, when, and is it still true? Any model can search the web now. Remembering correctly, and honestly re-checking what it said before, is the hard part. So that's where most of the work went.
+## How it works
+1. **Dates are worked out by code, not the AI.** "Last Tuesday" or "on the 3rd" becomes a real date in your timezone. If a phrase could mean two days, both are checked.
+2. **Past chats are looked up** for those dates and topics. If there's no record, the agent is told so and must say so, then still help.
+3. **The question picks the path:**
+   - *"Has it changed?"*: every fact it told you before is re-checked **at the same time**, one quick search each.
+   - *"What did I ask?"*: answered from memory, with no web search.
+   - Anything else: a normal web search answer, with sources.
+4. **After each answer, it saves the facts it stated** (e.g. "Neon: $19/month", plus the source), so they can be re-checked later.
 
-## What happens when you send a message
+You see every search live while it works. It runs on Claude, OpenAI, Gemini or Groq.
 
-1. **Work out the dates (plain code, no AI).** "Last Tuesday" or "on 3 November" is turned into real dates in *your* timezone. A bare "Monday" means the most recent past Monday. "Last Tuesday" said on a Wednesday could mean yesterday or the week before, so both are checked. This takes about 0.03 ms and is covered by unit tests.
-2. **Look up past conversations (plain code).** Find chats from those dates, plus chats on the same topic. A simple word search in SQLite does this. If you point to a conversation that doesn't exist, the assistant is told so explicitly, and must say it has no record instead of making one up.
-3. **Pick the fastest path for the question.**
-   - *"Is that still correct?" / "Has anything changed since?"*: re-check each fact it stated before, **all at the same time** (see below).
-   - *"What did I ask you on 3 November?"*: memory alone answers this, so a smaller, faster model answers with no web search.
-   - Anything else: the main model answers, searching the web as needed.
-4. **Show the work.** The answer streams in word by word. Above it, a collapsible timeline shows what the assistant did: memory looked up, each search and how many results it found.
-5. **Remember it.** After answering, a small model writes down a short summary and the concrete facts that were stated (for example "Neon Launch: $19/month", with its source). This runs after you already have your answer, so it never slows you down.
+## Results
+All live testing used **Groq's free tier**: we had no credits for the other three.
 
-## The part we're proudest of: re-checking old answers
+| What we tested | Result |
+|---|---|
+| "Has pricing changed since last Tuesday?" | Passed 6/6 checks, 3 times, in **4–6 s** |
+| Same kind of question, model searching one by one | **137 s**, 16 searches |
+| "On Monday we shortlisted 5 CRMs…" with **no history** | Passed 6/6: said it had no record, then checked the 5 likely CRMs. Invented nothing |
+| 14 reworded questions ("are those prices still right?") | All take the correct path |
+| A small model claimed "I re-checked all 7 prices" after 1 search | Now impossible: a fact can't be marked "unchanged" without a source |
 
-When you ask "has pricing changed?", we already know exactly which facts to check: the ones saved in step 5. So instead of letting the AI search one thing after another, the code starts **one small search per fact, all at once**. Each result appears as a row: ✓ unchanged, Δ changed, or ? couldn't verify. The main model then writes the reply from those results.
+Testing also found 4 real bugs, all fixed: "the 3rd" wasn't read as a date, "since last Tuesday" missed a day, "double-check" wasn't treated as a re-check, and "right now" pulled in unrelated chats.
 
-- **Faster:** the wait is only as long as the slowest single check. On Groq, letting the model search one thing at a time took 137 s and 16 searches for a similar Postgres pricing question. The parallel way answers "has pricing changed since last Tuesday?" in about 5–6 s. These aren't identical tasks, but the gap is the point.
-- **More honest:** the code only lets a fact be called "unchanged" or "changed" if that check found a source. Otherwise it's "couldn't verify". We added this after watching a small model claim it had "re-checked all seven prices" when it had done one search.
-- **Doesn't fall over:** if the model writing the final reply fails (for example, a rate limit), the code builds the results table itself, so the checks aren't wasted.
+**Not yet tested live:** Claude, OpenAI and Gemini. Run `npm run eval -- --provider anthropic` (or `openai` / `gemini`) with your key to check them.
 
-## Other choices
+## Why this way
+- **Code handles dates and memory.** It's instant (about 0.03 ms) and testable. AI is slow and gets dates wrong.
+- **Re-checking runs all at once.** You wait for the slowest check, not the total.
+- **Honesty is enforced by code, not just asked for in the prompt.** No source means "couldn't verify".
+- **Simple stack.** SQLite built into Node, a plain web server, a plain HTML page. `npm install && npm run dev` just works.
 
-- **Works with four AI providers** (Anthropic, OpenAI, Google, Groq), each using its own built-in web search. Each provider is one file behind a small shared interface. The memory and date code doesn't know or care which one is answering.
-- **Simple building blocks:** SQLite built into Node, a plain Node web server, and a chat page in plain HTML/JS. No framework and no separate database to install.
+## Considered and rejected
+- **Memory as a tool the AI calls:** an extra round trip, and models forget to use it.
+- **Sending the whole history every time:** slow, expensive, and buries the relevant chat.
+- **Embeddings / vector search:** an extra API key, and worse at exact names, dates and prices.
+- **A framework like LangChain:** it hides exactly what differs between providers.
 
-## What we tried or rejected
-
-- **Memory as a tool the AI calls:** the brief allows one tool (web search). It would also add an extra round trip, and models often forget to call it.
-- **Letting the AI work out dates:** models get calendar math wrong, and code is instant and testable.
-- **Sending the whole history every time:** slow, expensive, and the one relevant chat gets buried.
-- **Embeddings / a vector database:** they need another API key, and they're worse than plain word search at exact names, dates and prices.
-
-## How we tested it, honestly
-
-- **38 unit tests** for the code that doesn't need an AI. 14 of them are reworded questions ("are those prices still right?", "double-check our chat on the 3rd") that must each take the right path. Writing them exposed three real gaps, now fixed: "the 3rd" wasn't understood as a date, "since last Tuesday" missed the week-before reading, and "double-check" wasn't treated as a re-check.
-- **An eval script** (`npm run eval`) that plays nine conversations against a real model and checks the results with code. It starts with **empty history**, because that's how a reviewer starts, then adds one saved past conversation.
-- **All live testing used Groq's free tier** (`gpt-oss-120b`, plus `gpt-oss-20b` for the quick checks), because we had no credits for the others.
-  - The empty-history CRM question passed 6/6: it said it had no record, then checked the five likely CRMs. It took 13.9 s.
-  - "Has pricing changed since last Tuesday?" passed 6/6 three times, in 4.1–5.9 s.
-  - The free tier's daily limit blocked the remaining scenarios. The evals also found a real bug ("right now" pulled in unrelated chats from today), which we fixed.
-- **Anthropic, OpenAI and Gemini are written and compile, but haven't answered a real question yet.** `npm run eval -- --provider anthropic` (or `openai` / `gemini`) checks them with your key.
-
-## Known weak spots
-
-- Deciding which path a question takes uses keyword patterns. An unusual phrasing may take the slower general path. That's still correct, just slower.
-- Each fact re-check is one small AI call, so re-checking many facts costs more.
-- Questions with no record but a real need (like the CRM one) take the full research path, so they're slower (about 14 s on Groq).
+## Known limits
+- Question types are detected by keyword patterns, so an unusual phrasing may take the slower general path.
+- "No record" questions that still need research take about 14 s on Groq.
 
 ## With another week
-
-1. Run the evals on all four providers, with several phrasings of each question, and tune for speed and accuracy from the numbers.
-2. Replace the keyword patterns with a small trained classifier.
-3. Keep a history of each fact over time, so "what changed since Monday?" becomes a lookup, and repeat checks on the same day are instant.
-4. Let users see, edit and delete what the assistant remembers.
+1. Run every eval on all four providers and tune for speed from the numbers.
+2. Track each fact over time, so "what changed since Monday?" is an instant lookup.
+3. Let users see, edit and delete what it remembers.

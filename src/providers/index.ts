@@ -13,7 +13,7 @@ if (config.anthropic.enabled) {
 }
 if (config.openai.enabled) registry.set("openai", openaiProvider({ ...config.openai, effort: config.effort }));
 if (config.gemini.enabled) registry.set("gemini", geminiProvider({ ...config.gemini, effort: config.effort }));
-if (config.groq.enabled) registry.set("groq", groqProvider({ ...config.groq, effort: config.effort }));
+if (config.groq.enabled) registry.set("groq", groqProvider(config.groq));
 
 export const defaultProviderId: ProviderId | null =
   config.provider && registry.has(config.provider) ? config.provider : (registry.keys().next().value ?? null);

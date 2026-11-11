@@ -13,7 +13,7 @@ const MAX_RECALLED_TURNS = 6;
 const MAX_ANSWER_CHARS = 1800; // fallback when a turn has not been distilled yet
 
 const STOPWORDS = new Set(
-  "a an and are as at be been but by can could did do does for from had has have how i if in into is it its just me my no not of on or our since so than that the their them then there these they this those to up us was we were what when where which who why will with would you your yours about any anything has have changed change still correct today ask asked tell told said again last week month day monday tuesday wednesday thursday friday saturday sunday january february march april may june july august september october november december".split(
+  "a an and are as at be been but by can could did do does for from had has have how i if in into is it its just me my no not of on or our since so than that the their them then there these they this those to up us was we were what when where which who why will with would you your yours about any anything has have changed change still correct today ask asked tell told said again last week month day pricing price prices priced cost costs plan plans tool tools option options best cheapest something anything big new shipped released launched update updates updated latest current currently right now people person team monday tuesday wednesday thursday friday saturday sunday january february march april may june july august september october november december".split(
     " ",
   ),
 );
@@ -28,7 +28,11 @@ export interface Recall {
 
 export function recall(text: string, clock: UserClock, currentThreadId: string | null): Recall {
   const exclude = currentThreadId ?? undefined;
-  const dateRefs = resolveDateRefs(text, clock);
+  // "Is it still correct today?" anchors the *comparison*, not the memory lookup: drop
+  // today/now references when the message also points at another day.
+  const allRefs = resolveDateRefs(text, clock);
+  const isNow = (r: DateRef) => /^(today|now|right now|currently|tonight|this morning)$/i.test(r.phrase.trim());
+  const dateRefs = allRefs.some((r) => !isNow(r)) ? allRefs.filter((r) => !isNow(r)) : allRefs;
   const picked = new Map<number, Turn>();
   const emptyRefs: DateRef[] = [];
 

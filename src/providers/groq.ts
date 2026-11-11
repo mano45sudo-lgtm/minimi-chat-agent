@@ -40,6 +40,7 @@ export function groqProvider(opts: { chatModel: string; memoryModel: string; eff
 
       let text = "";
       let reasoning = "";
+      let lastStatus = "";
       const tools = new Map<number, ExecutedTool>();
       const searches: string[] = [];
       let finish: string | null = null;
@@ -50,8 +51,13 @@ export function groqProvider(opts: { chatModel: string; memoryModel: string; eff
         const d = choice.delta;
         if (d.reasoning) {
           reasoning += d.reasoning;
-          const line = reasoning.trim().split("\n").filter(Boolean).pop()?.trim();
-          if (line) emit({ type: "status", text: line.slice(0, 160) });
+          // Emit only completed lines, not every token, to keep the event stream light.
+          const lines = reasoning.split("\n").filter((l) => l.trim());
+          const line = (reasoning.endsWith("\n") ? lines.pop() : lines[lines.length - 2])?.trim().slice(0, 160);
+          if (line && line !== lastStatus) {
+            lastStatus = line;
+            emit({ type: "status", text: line });
+          }
         }
         for (const t of d.executed_tools ?? []) {
           const prev = tools.get(t.index);
@@ -98,7 +104,12 @@ export function groqProvider(opts: { chatModel: string; memoryModel: string; eff
 
     describeError(err) {
       if (err instanceof Groq.AuthenticationError) return "The Groq API key is invalid. Check GROQ_API_KEY in .env.";
-      if (err instanceof Groq.RateLimitError) return "Rate limited by Groq. Please retry in a moment.";
+      if (err instanceof Groq.RateLimitError) {
+        // Free-tier limits are per day as well as per minute; say which, and when it resets.
+        const daily = /tokens per day|requests per day/i.test(err.message);
+        const wait = /try again in ([\dhms.]+)/i.exec(err.message)?.[1]?.replace(/\.\d+s$/, "s");
+        return `Groq ${daily ? "daily" : "per-minute"} rate limit reached${wait ? ` - try again in ${wait}` : ""}, or switch model.`;
+      }
       if (err instanceof Groq.APIError) return `Groq API error (${err.status ?? "network"}): ${err.message}`;
       return null;
     },

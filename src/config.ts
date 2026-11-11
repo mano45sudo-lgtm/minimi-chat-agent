@@ -39,5 +39,8 @@ export const config = {
     enabled: !!env("GROQ_API_KEY"),
     chatModel: env("GROQ_CHAT_MODEL") ?? "openai/gpt-oss-120b", // browser_search-capable
     memoryModel: env("GROQ_MEMORY_MODEL") ?? "openai/gpt-oss-20b",
+    // Groq has no per-request search cap; effort is the lever. At `medium`, a pricing
+    // comparison ran 16 searches / 137 s, so default `low` (Groq's own recommendation).
+    effort: (env("GROQ_EFFORT") ?? "low") as Effort,
   },
 };

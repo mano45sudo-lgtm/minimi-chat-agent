@@ -37,16 +37,19 @@ When you ask "has pricing changed?", we already know exactly which facts to chec
 
 ## How we tested it, honestly
 
-- **22 unit tests** for the code that doesn't need an AI: dates, memory search, citations, fact-check rules.
-- **An eval script** (`npm run eval`) that plays five realistic conversations against a real model and checks the results with code.
-- **All live testing used Groq's free tier** (`gpt-oss-120b`, plus `gpt-oss-20b` for the quick checks), because we had no credits for the others. The main "changed since last Tuesday?" scenario passed all 6 checks twice, in 4.8 s and 5.9 s. The free tier's daily limit blocked the remaining scenarios on later runs. The evals also found a real bug ("right now" was pulling in unrelated chats from today), which we fixed.
+- **38 unit tests** for the code that doesn't need an AI. 14 of them are reworded questions ("are those prices still right?", "double-check our chat on the 3rd") that must each take the right path. Writing them exposed three real gaps, now fixed: "the 3rd" wasn't understood as a date, "since last Tuesday" missed the week-before reading, and "double-check" wasn't treated as a re-check.
+- **An eval script** (`npm run eval`) that plays nine conversations against a real model and checks the results with code. It starts with **empty history**, because that's how a reviewer starts, then adds one saved past conversation.
+- **All live testing used Groq's free tier** (`gpt-oss-120b`, plus `gpt-oss-20b` for the quick checks), because we had no credits for the others.
+  - The empty-history CRM question passed 6/6: it said it had no record, then checked the five likely CRMs. It took 13.9 s.
+  - "Has pricing changed since last Tuesday?" passed 6/6 three times, in 4.1–5.9 s.
+  - The free tier's daily limit blocked the remaining scenarios. The evals also found a real bug ("right now" pulled in unrelated chats from today), which we fixed.
 - **Anthropic, OpenAI and Gemini are written and compile, but haven't answered a real question yet.** `npm run eval -- --provider anthropic` (or `openai` / `gemini`) checks them with your key.
 
 ## Known weak spots
 
 - Deciding which path a question takes uses keyword patterns. An unusual phrasing may take the slower general path. That's still correct, just slower.
 - Each fact re-check is one small AI call, so re-checking many facts costs more.
-- The small free model sometimes asks you for details when it should just make a reasonable attempt.
+- Questions with no record but a real need (like the CRM one) take the full research path, so they're slower (about 14 s on Groq).
 
 ## With another week
 

@@ -38,8 +38,10 @@ const lastWeekday = (dow: number) => {
 };
 
 // ---------- fixture: one past conversation with recorded, checkable claims ----------
-// Inserted directly (not generated) so every run starts from the same memory.
+// Inserted directly (not generated) so every run starts from the same memory. It is added
+// only AFTER the empty-history scenarios, because reviewers start with no history at all.
 const pgDate = lastWeekday(2); // most recent past Tuesday
+function seedFixture() {
 const pgAt = new Date(`${pgDate}T10:15:00Z`).getTime() - offsetMin * 60_000;
 const pgThread = store.createThread(pgAt);
 const pgTurn = store.insertTurn({
@@ -63,6 +65,7 @@ store.saveDistillation(pgTurn, {
   ],
 });
 store.setThreadTitle(pgThread.id, "Cheapest managed Postgres hosting");
+}
 
 const pgDay = humanDate(pgDate).split(" ").slice(1, 3).join(" "); // e.g. "3 November"
 
@@ -107,11 +110,57 @@ async function ask(message: string): Promise<Run> {
 type Check = [name: string, pass: boolean];
 const of = <T extends AgentEvent["type"]>(r: Run, t: T) => r.events.filter((e): e is Extract<AgentEvent, { type: T }> => e.type === t);
 const recalledDays = (r: Run) => of(r, "recall").flatMap((e) => e.turns.map((t) => t.date));
-const NO_RECORD = /(don['’]t|do not|can['’]t|cannot|couldn['’]t) (have|find|see)|no (record|conversation|history)|not (on record|in my (memory|records))/i;
+const NO_RECORD = /(don['’]t|do not|can['’]t|cannot|couldn['’]t) (have|find|see|recall)|no (record|conversation|history|prior|previous|earlier)|not (on record|in my (memory|records))|nothing (on record|from)/i;
 const sourcedVerdicts = (r: Run) => of(r, "check").every((c) => c.status === "unverified" || c.sources.length > 0);
 
-const scenarios: Array<{ name: string; message: string; checks: (r: Run) => Check[] }> = [
+const CRM_NAMES = /hubspot|salesforce|pipedrive|zoho|freshsales|close.com|close|attio|monday|copper|insightly|nutshell|keap/gi;
+const PG_HOSTS = /supabase|neon|rds|aurora|digitalocean|aiven|render|railway|crunchy|timescale|heroku|cloud sql|azure/i;
+const distinct = (re: RegExp, s: string) => new Set((s.match(re) ?? []).map((x) => x.toLowerCase())).size;
+// An invented memory reads like "you shortlisted HubSpot…" or "you asked me about Postgres…".
+const INVENTED = /(you|we) (shortlisted|chose|picked) [A-Z]|your shortlist (was|included|consisted)|you asked (me )?(about|whether|for|if|which)/;
+
+type Scenario = { phase: "empty" | "memory"; name: string; message: string; checks: (r: Run) => Check[] };
+const scenarios: Scenario[] = [
+  // ---- Empty history: exactly how a reviewer starts. Honesty first, then still be useful.
   {
+    phase: "empty",
+    name: "Empty: CRM shortlist from Monday",
+    message: "On Monday we shortlisted 5 CRM tools for a 20-person sales team. Has any of them changed pricing or shipped something big since?",
+    checks: (r) => [
+      ["answered without error", !r.error && r.answer.length > 0],
+      ["recalled nothing", recalledDays(r).length === 0],
+      ["says it has no record", NO_RECORD.test(r.answer)],
+      ["did not invent the shortlist", !INVENTED.test(r.answer)],
+      ["made a best attempt (searched)", of(r, "search").length > 0],
+      ["covered at least 3 likely CRMs", distinct(CRM_NAMES, r.answer) >= 3],
+    ],
+  },
+  {
+    phase: "empty",
+    name: "Empty: what did I ask on 3 November?",
+    message: "What did I ask you on 3 November? Is your answer still correct today?",
+    checks: (r) => [
+      ["answered without error", !r.error && r.answer.length > 0],
+      ["recalled nothing", recalledDays(r).length === 0],
+      ["says it has no record", NO_RECORD.test(r.answer)],
+      ["did not invent a question", !INVENTED.test(r.answer)],
+    ],
+  },
+  {
+    phase: "empty",
+    name: "Empty: Postgres pricing since last Tuesday",
+    message: "Last Tuesday I asked you about Postgres hosting. Has any pricing changed since then?",
+    checks: (r) => [
+      ["answered without error", !r.error && r.answer.length > 0],
+      ["says it has no record", NO_RECORD.test(r.answer)],
+      ["did not invent the earlier answer", !INVENTED.test(r.answer)],
+      ["made a best attempt (searched)", of(r, "search").length > 0],
+      ["names real Postgres hosts", PG_HOSTS.test(r.answer)],
+    ],
+  },
+  // ---- With one recorded conversation (the fixture) on the most recent Tuesday.
+  {
+    phase: "memory",
     name: "Changed since last Tuesday?",
     message: "Last Tuesday I asked you about Postgres hosting. Has any pricing changed since then?",
     checks: (r) => [
@@ -124,6 +173,7 @@ const scenarios: Array<{ name: string; message: string; checks: (r: Run) => Chec
     ],
   },
   {
+    phase: "memory",
     name: "What did I ask on <date>? Still correct?",
     message: `What did I ask you on ${pgDay}? Is your answer still correct today?`,
     checks: (r) => [
@@ -135,6 +185,7 @@ const scenarios: Array<{ name: string; message: string; checks: (r: Run) => Chec
     ],
   },
   {
+    phase: "memory",
     name: "Memory-only question",
     message: `What did I ask you on ${pgDay}?`,
     checks: (r) => [
@@ -144,20 +195,31 @@ const scenarios: Array<{ name: string; message: string; checks: (r: Run) => Chec
       ["did not search (memory suffices)", of(r, "search").length === 0],
     ],
   },
+  // Paraphrases: real users won't use the brief's wording. (More are unit-tested in test/route.test.ts.)
   {
-    name: "Shortlist that was never recorded",
-    message: "On Monday we shortlisted 5 CRM tools for a 20-person sales team. Has any of them changed pricing or shipped something big since?",
+    phase: "memory",
+    name: "Paraphrase: prices still right?",
+    message: "Are the Postgres prices you gave me the other day still right?",
     checks: (r) => [
       ["answered without error", !r.error && r.answer.length > 0],
-      ["recalled nothing for Monday", recalledDays(r).length === 0],
-      ["says it has no record", NO_RECORD.test(r.answer)],
-      // An invented memory looks like "you shortlisted HubSpot, …" or "your shortlist was …".
-      ["did not invent a recorded shortlist", !/\b(you|we) (shortlisted|chose|picked) [A-Z]|\byour shortlist (was|included|consisted)/.test(r.answer)],
-      // The prompt asks for a labeled best attempt rather than only a question back.
-      ["made a best attempt (searched)", of(r, "search").length > 0],
+      [`recalled ${pgDate}`, recalledDays(r).includes(pgDate)],
+      ["took the parallel verify path", of(r, "checks").length === 1],
+      ["no verdict without a source", sourcedVerdicts(r)],
     ],
   },
   {
+    phase: "memory",
+    name: "Paraphrase: double-check Tuesday's numbers",
+    message: "Can you double-check the Postgres numbers from our chat on Tuesday?",
+    checks: (r) => [
+      ["answered without error", !r.error && r.answer.length > 0],
+      [`recalled ${pgDate}`, recalledDays(r).includes(pgDate)],
+      ["took the parallel verify path", of(r, "checks").length === 1],
+      ["no verdict without a source", sourcedVerdicts(r)],
+    ],
+  },
+  {
+    phase: "memory",
     name: "Fresh fact (research path)",
     message: "What is the latest stable Node.js LTS version right now?",
     checks: (r) => [
@@ -170,14 +232,24 @@ const scenarios: Array<{ name: string; message: string; checks: (r: Run) => Chec
 ];
 
 // ---------- run ----------
-console.log(`\nMinimi evals · ${provider.id}/${provider.chatModel} · today ${today} · fixture on ${pgDate}\n`);
+console.log(`\nMinimi evals · ${provider.id}/${provider.chatModel} · today ${today}\n\n— empty history (how a reviewer starts) —\n`);
 const rows: string[] = [];
 let passed = 0;
 let total = 0;
 let blockedCount = 0;
 // A provider quota/rate limit says nothing about the agent: report it, don't score it.
 const RATE_LIMITED = /rate limit|429|quota/i;
+let seeded = false;
 for (const s of scenarios) {
+  if (s.phase === "memory" && !seeded) {
+    // Start the memory phase clean: drop what the empty-history scenarios saved.
+    for (const t of store.listThreads()) store.deleteThread(t.id);
+    seedFixture();
+    seeded = true;
+    process.stdout.write(`— added one past conversation on ${pgDate} (Postgres pricing, 3 recorded facts) —
+
+`);
+  }
   process.stdout.write(`▶ ${s.name}\n  "${s.message}"\n`);
   const r = await ask(s.message);
   const blocked = RATE_LIMITED.test(r.error ?? "") || of(r, "check").some((c) => RATE_LIMITED.test(c.now)) || RATE_LIMITED.test(r.answer.slice(0, 200));

@@ -41,15 +41,26 @@ All four appear in the model menu at the bottom of the chat. Ones without a key 
 npm run eval -- --provider groq        # or anthropic / openai / gemini
 ```
 
-This runs five realistic conversations against the real model, using a fresh database with one pre-made past conversation. Code (not another AI) checks the results. It checks whether the agent found the right day, re-checked each old fact, never called a fact "unchanged" without a source, didn't search when memory was enough, and didn't invent a past conversation. It also prints how long each answer took.
+This runs nine realistic conversations against the real model, and code (not another AI) checks the results:
 
-**What we've run so far:** only Groq (free tier). The main scenario, *"has pricing changed since last Tuesday?"*, passed all 6 checks twice, in 4.8 s and 5.9 s. The free tier's daily limit stopped the other four scenarios on the later runs, and the eval reports those as "blocked", not as failures. **We have not run the evals on Anthropic, OpenAI or Gemini.** With a key for one of them, the command above checks it.
+- **Empty history first, the way you'll start.** The brief's own questions (*"On Monday we shortlisted 5 CRMs…"*, *"What did I ask you on 3 November?"*) are asked with no history. The agent must say it has no record, must not invent one, and should still help (for example by checking the likely CRMs).
+- **Then with one saved past conversation.** It must find the right day, re-check each old fact, never call a fact "unchanged" without a source, and not search when memory is enough. Two of these use reworded questions (*"are those prices still right?"*, *"double-check Tuesday's numbers"*).
+- Each run prints how long the answer took.
+
+There are also 14 reworded questions in `test/route.test.ts` that check, without any AI, that each kind of question takes the right path.
+
+**What we've run so far:** only Groq (free tier). Results so far:
+- The empty-history CRM question passed 6/6: it said it had no record, then checked HubSpot, Salesforce, Zoho, Pipedrive and Dynamics. It took 13.9 s.
+- *"Has pricing changed since last Tuesday?"* passed 6/6 three times (4.1–5.9 s).
+- The free tier's daily limit blocked the other scenarios, and the eval reports them as "blocked", not as failures.
+
+**We have not run the evals on Anthropic, OpenAI or Gemini.** With a key for one of them, the command above checks it.
 
 ## Other commands
 
 | Command | What it does |
 |---|---|
-| `npm test` | 22 fast unit tests (dates, memory search, citations, fact checks). No API key needed |
+| `npm test` | 38 fast unit tests (dates, memory search, question routing, citations, fact checks). No API key needed |
 | `npm run typecheck` | Checks the TypeScript |
 
 ## Where things are

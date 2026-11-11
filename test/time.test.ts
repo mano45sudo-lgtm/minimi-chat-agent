@@ -31,6 +31,19 @@ test("yesterday and since-phrases", () => {
   assert.equal(since.to, "2026-11-11");
 });
 
+test("bare day-of-month ('the 3rd') is the most recent past such day, and beats an adjacent weekday", () => {
+  assert.equal(one("what did we discuss on the 3rd?").from, "2026-11-03");
+  assert.equal(one("what did we discuss on the 25th?").from, "2026-10-25");
+  assert.equal(one("our chat on Tuesday the 3rd").from, "2026-11-03");
+});
+
+test("'since last Tuesday' keeps both readings", () => {
+  const r = one("anything new since last Tuesday?");
+  assert.equal(r.from, "2026-11-10");
+  assert.equal(r.alternative?.from, "2026-11-03");
+  assert.equal(r.alternative?.to, "2026-11-11");
+});
+
 test("periods widen to their full range", () => {
   const w = one("what did we talk about last week?");
   assert.equal(w.from, "2026-11-02");

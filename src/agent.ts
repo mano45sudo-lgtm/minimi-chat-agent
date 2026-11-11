@@ -8,12 +8,10 @@ import { SYSTEM_PROMPT } from "./prompt.ts";
 import { getProvider, listProviders } from "./providers/index.ts";
 import type { AgentEvent, TurnResult } from "./providers/types.ts";
 import { localDate, type UserClock } from "./time.ts";
-import { claimsToCheck, linkCitations, renderFallback, renderVerification, runChecks, wantsVerification } from "./verify.ts";
+import { chooseRoute } from "./route.ts";
+import { linkCitations, renderFallback, renderVerification, runChecks } from "./verify.ts";
 
 export type { AgentEvent };
-
-/** Words that mean the answer depends on the world now, not just on what was said. */
-const NEEDS_FRESH_DATA = /\b(now|today|current(ly)?|latest|price|pricing|cost|news|release[ds]?|version)\b/i;
 
 export interface TurnInput {
   threadId: string | null;
@@ -76,9 +74,9 @@ export async function runTurn({ threadId, message, clock, provider: providerId, 
     emit(e);
   };
   const base = { system: SYSTEM_PROMPT, ledger: renderLedger(clock, thread.id), history, clock, signal, effort, emit: tap };
-  const claims = claimsToCheck(r.turns);
-  const verify = claims.length > 0 && wantsVerification(message);
-  const memoryOnly = !verify && r.turns.length > 0 && r.refersToPast && !NEEDS_FRESH_DATA.test(message);
+  const { route, claims } = chooseRoute(message, r);
+  const verify = route === "verify";
+  const memoryOnly = route === "recall";
 
   let result: TurnResult;
   let sentText = promptText;

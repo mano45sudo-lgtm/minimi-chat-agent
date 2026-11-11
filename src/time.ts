@@ -103,12 +103,35 @@ export function resolveDateRefs(text: string, clock: UserClock): DateRef[] {
     const ref: DateRef = { phrase: r.text.replace(/^(on|since|from)\s+/i, ""), from, to };
     // "last Tuesday" said on a Wednesday: yesterday, or the week before? People use both.
     // Keep the other reading as an alternative; recall checks both and the evidence decides.
-    if (/^last\s+\w+day$/i.test(ref.phrase) && from === to && !since) {
-      ref.alternative = { phrase: ref.phrase, from: addDays(from, -7), to: addDays(from, -7) };
+    if (/^last\s+\w+day$/i.test(ref.phrase)) {
+      if (!since && from === to) ref.alternative = { phrase: ref.phrase, from: addDays(from, -7), to: addDays(from, -7) };
+      if (since) ref.alternative = { phrase: ref.phrase, from: addDays(from, -7), to: today };
     }
     refs.push(ref);
   }
+
+  // "on the 3rd" / "Tuesday the 3rd": a bare day-of-month, which chrono misses. It means
+  // the most recent past day with that number; it overrides an adjacent bare weekday.
+  for (const m of text.matchAll(/\bthe\s+(\d{1,2})(?:st|nd|rd|th)\b/gi)) {
+    const day = Number(m[1]);
+    if (day < 1 || day > 31) continue;
+    let ymd = today.slice(0, 8) + String(day).padStart(2, "0");
+    if (ymd > today || !isRealDate(ymd)) ymd = shiftMonth(today.slice(0, 8) + "01", -1).slice(0, 8) + String(day).padStart(2, "0");
+    if (!isRealDate(ymd)) continue;
+    const at = m.index ?? 0;
+    const adjacent = refs.findIndex((r) => {
+      const i = text.toLowerCase().lastIndexOf(r.phrase.toLowerCase(), at);
+      return i >= 0 && at - (i + r.phrase.length) <= 2 && /day$/i.test(r.phrase);
+    });
+    if (adjacent >= 0) refs.splice(adjacent, 1);
+    refs.push({ phrase: m[0], from: ymd, to: ymd });
+  }
   return refs;
+}
+
+function isRealDate(ymd: string): boolean {
+  const d = new Date(ymd + "T00:00:00Z");
+  return !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === ymd;
 }
 
 function shiftYear(ymd: string, years: number): string {

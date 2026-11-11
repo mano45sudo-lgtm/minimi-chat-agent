@@ -29,7 +29,7 @@ export interface CheckResult {
 
 /** Does the message ask whether earlier facts still hold / what changed? */
 export function wantsVerification(text: string): boolean {
-  return /\b(still\s+(correct|right|true|valid|accurate|current|the case|good)|chang(e|ed|es|ing)|up[- ]to[- ]date|outdated|out of date|any\s+(updates?|news)|anything new|shipped|is\s+(it|that|this)\s+still|since\s+(then|we|i|you|last|monday|tuesday|wednesday|thursday|friday|saturday|sunday|yesterday|\d))\b/i.test(
+  return /\b(double[- ]?check|re-?check|re-?verify|verify|confirm|still\s+(correct|right|true|valid|accurate|current|the case|good)|chang(e|ed|es|ing)|up[- ]to[- ]date|outdated|out of date|any\s+(updates?|news)|anything new|shipped|is\s+(it|that|this)\s+still|since\s+(then|we|i|you|last|monday|tuesday|wednesday|thursday|friday|saturday|sunday|yesterday|\d))\b/i.test(
     text,
   );
 }

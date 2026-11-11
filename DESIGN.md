@@ -20,7 +20,7 @@ All live testing used **Groq's free tier**: we had no credits for the other thre
 | What we tested | Result |
 |---|---|
 | "Has pricing changed since last Tuesday?" | Passed 6/6 checks, 3 times, in **4–6 s** |
-| Same kind of question, model searching one by one | **137 s**, 16 searches |
+| A similar Postgres pricing question, model searching one by one | **137 s**, 16 searches |
 | "On Monday we shortlisted 5 CRMs…" with **no history** | Passed 6/6: said it had no record, then checked the 5 likely CRMs. Invented nothing |
 | 14 reworded questions ("are those prices still right?") | All take the correct path |
 | A small model claimed "I re-checked all 7 prices" after 1 search | Now impossible: a fact can't be marked "unchanged" without a source |

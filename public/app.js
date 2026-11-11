@@ -55,10 +55,16 @@ function renderPicker() {
     row.setAttribute("aria-checked", String(p.id === choice.provider));
     const b = el("span", "provider-badge"); badge(b, p.id);
     const names = el("span", "names");
-    names.append(el("b", null, PROVIDERS[p.id]?.label ?? p.id), el("small", null, p.model));
+    // Unconfigured providers stay visible (so it's clear what's supported) but can't be picked.
+    names.append(el("b", null, PROVIDERS[p.id]?.label ?? p.id), el("small", null, p.available ? p.model : `Add ${p.key} to .env`));
     const tick = el("span", "tick");
     tick.innerHTML = '<svg width="15" height="15" viewBox="0 0 16 16" fill="none"><path d="M3.2 8.5L6.5 11.8L13 4.5" stroke="currentColor" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round"/></svg>';
     row.append(b, names, tick);
+    if (!p.available) {
+      row.disabled = true;
+      row.title = `${PROVIDERS[p.id]?.label ?? p.id} needs ${p.key} in .env (then restart the server)`;
+      return row;
+    }
     row.onclick = () => { choice.provider = p.id; store.set("provider", p.id); renderPicker(); setMenu(false); input.focus(); };
     return row;
   }));
@@ -76,9 +82,10 @@ function setMenu(open) {
 async function loadProviders() {
   choice.providers = await (await fetch("/api/providers")).json();
   const saved = store.get("provider");
-  choice.provider = choice.providers.some((p) => p.id === saved)
+  const usable = choice.providers.filter((p) => p.available);
+  choice.provider = usable.some((p) => p.id === saved)
     ? saved
-    : (choice.providers.find((p) => p.default) ?? choice.providers[0])?.id ?? null;
+    : (usable.find((p) => p.default) ?? usable[0])?.id ?? null;
   const savedEffort = store.get("effort");
   if (EFFORT_LABEL[savedEffort]) choice.effort = savedEffort;
   renderPicker();

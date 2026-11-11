@@ -25,11 +25,30 @@ if (!defaultProviderId) {
   console.warn("\n[minimi] No API key found. Copy .env.example to .env and set at least one of ANTHROPIC_API_KEY, OPENAI_API_KEY, GEMINI_API_KEY.\n");
 }
 
+const ALL: Array<{ id: ProviderId; key: string }> = [
+  { id: "anthropic", key: "ANTHROPIC_API_KEY" },
+  { id: "openai", key: "OPENAI_API_KEY" },
+  { id: "gemini", key: "GEMINI_API_KEY" },
+  { id: "groq", key: "GROQ_API_KEY" },
+];
+
+export function isKnownProvider(id: string): id is ProviderId {
+  return ALL.some((p) => p.id === id);
+}
+
+/** A requested provider must be configured; no silent fallback to a different model. */
 export function getProvider(id?: string | null): Provider | null {
-  if (id && registry.has(id as ProviderId)) return registry.get(id as ProviderId)!;
+  if (id) return registry.get(id as ProviderId) ?? null;
   return defaultProviderId ? registry.get(defaultProviderId)! : null;
 }
 
+/** Every supported provider, so the UI can show what exists and which key enables it. */
 export function listProviders() {
-  return [...registry.values()].map((p) => ({ id: p.id, model: p.chatModel, default: p.id === defaultProviderId }));
+  return ALL.map(({ id, key }) => ({
+    id,
+    model: registry.get(id)?.chatModel ?? config[id].chatModel,
+    available: registry.has(id),
+    key,
+    default: id === defaultProviderId,
+  }));
 }

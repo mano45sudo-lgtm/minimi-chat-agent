@@ -126,6 +126,7 @@ function readBody(req: IncomingMessage): Promise<string> {
 
 server.listen(config.port, () => {
   const providers = listProviders()
+    .filter((p) => p.available)
     .map((p) => `${p.id} (${p.model})${p.default ? " [default]" : ""}`)
     .join(", ");
   console.log(`\n  Minimi is running → http://localhost:${config.port}\n  providers: ${providers || "none - set an API key in .env"}\n`);

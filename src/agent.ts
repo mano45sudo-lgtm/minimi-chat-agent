@@ -5,7 +5,7 @@ import { store } from "./db.ts";
 import { distillTurn } from "./distill.ts";
 import { recall, renderContext, renderLedger } from "./memory.ts";
 import { SYSTEM_PROMPT } from "./prompt.ts";
-import { getProvider } from "./providers/index.ts";
+import { getProvider, listProviders } from "./providers/index.ts";
 import type { AgentEvent, TurnResult } from "./providers/types.ts";
 import { localDate, type UserClock } from "./time.ts";
 import { claimsToCheck, linkCitations, renderFallback, renderVerification, runChecks, wantsVerification } from "./verify.ts";
@@ -30,7 +30,13 @@ export interface TurnInput {
 export async function runTurn({ threadId, message, clock, provider: providerId, effort, signal, emit }: TurnInput): Promise<void> {
   const provider = getProvider(providerId);
   if (!provider) {
-    emit({ type: "error", message: "No model provider is configured. Set an API key in .env (see .env.example) and restart." });
+    const info = providerId ? listProviders().find((p) => p.id === providerId) : undefined;
+    emit({
+      type: "error",
+      message: info
+        ? `${info.id} isn't configured. Add ${info.key} to .env and restart, or pick another model.`
+        : "No model provider is configured. Set an API key in .env (see .env.example) and restart.",
+    });
     return;
   }
 

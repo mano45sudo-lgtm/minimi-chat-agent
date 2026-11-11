@@ -242,6 +242,8 @@ details.sources .age { color: var(--muted); }
   transition: background-color .14s ease;
 }
 .model-row:hover, .model-row:focus-visible { background: var(--row-hover); outline: none; }
+.model-row:disabled { cursor: not-allowed; opacity: .5; }
+.model-row:disabled:hover { background: transparent; }
 .model-row .names { flex: 1; min-width: 0; display: flex; flex-direction: column; line-height: 1.2; }
 .model-row .names b { font-weight: 500; }
 .model-row .names small { color: var(--muted); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

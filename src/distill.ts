@@ -18,7 +18,9 @@ const Distillation = z.object({
         source_url: z.string().nullable(),
       }),
     )
-    .describe("Every concrete, time-sensitive fact the assistant asserted (prices, plans, versions, dates, limits). Max 15."),
+    .describe(
+      "Every concrete, time-sensitive fact about the WORLD the assistant asserted (prices, plans, versions, dates, limits, launches). Never statements about the conversation, the question, or whether an earlier answer was correct. Subject is a short product/plan name. Max 15.",
+    ),
 });
 
 export async function distillTurn(

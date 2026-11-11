@@ -202,6 +202,40 @@ async function submit(text) {
       case "status":
         a.status.textContent = e.text;
         break;
+      case "checks": {
+        // One live row per recorded fact; each fills in as its parallel check lands.
+        const box = el("div", "checks");
+        for (const c of e.items) {
+          const row = el("div", "check pending");
+          row.dataset.id = c.id;
+          row.append(
+            el("span", "check-icon", "⟳"),
+            el("span", "check-subject", c.subject),
+            el("span", "check-then", `${c.then} · ${fmtDate(c.date)}`),
+            el("span", "check-now", "checking…"),
+          );
+          box.append(row);
+        }
+        a.checks = box;
+        a.m.insertBefore(box, a.answer);
+        break;
+      }
+      case "check": {
+        const row = a.checks?.querySelector(`[data-id="${e.id}"]`);
+        if (!row) break;
+        const icon = { unchanged: "✓", changed: "Δ", unverified: "?" }[e.status];
+        row.className = `check ${e.status}`;
+        row.querySelector(".check-icon").textContent = icon;
+        const now = row.querySelector(".check-now");
+        now.replaceChildren();
+        const label = e.status === "unverified" ? "not verified" : e.now + (e.changedOn ? ` (changed ${e.changedOn})` : "");
+        if (e.sources[0]) {
+          const link = el("a", null, label);
+          link.href = e.sources[0].url; link.target = "_blank"; link.rel = "noopener noreferrer";
+          now.append(link);
+        } else now.textContent = label;
+        break;
+      }
       case "search":
         liveChip?.classList.remove("live");
         liveChip = el("div", "chip live", "⌕ " + e.query);

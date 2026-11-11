@@ -16,23 +16,27 @@ export function openaiProvider(opts: { chatModel: string; memoryModel: string; e
     id: "openai",
     chatModel: opts.chatModel,
 
-    async answer({ system, ledger, history, user, clock, signal, emit }: TurnRequest): Promise<TurnResult> {
+    async answer({ system, ledger, history, user, clock, signal, emit, search = true, fast = false }: TurnRequest): Promise<TurnResult> {
       const searches: string[] = [];
       let summary = "";
 
       const stream = client.responses.stream(
         {
-          model: opts.chatModel,
+          model: fast ? opts.memoryModel : opts.chatModel,
           // Static text first so OpenAI's automatic prefix caching keeps hitting.
-          instructions: `${system}\n\n${ledger}`,
+          instructions: ledger ? `${system}\n\n${ledger}` : system,
           input: [...history.map((h) => ({ role: h.role, content: h.text })), { role: "user" as const, content: user }],
-          tools: [
-            {
-              type: "web_search",
-              ...(clock.timeZone ? { user_location: { type: "approximate" as const, timezone: clock.timeZone } } : {}),
-            },
-          ],
-          reasoning: { effort: opts.effort, summary: "auto" },
+          ...(search
+            ? {
+                tools: [
+                  {
+                    type: "web_search" as const,
+                    ...(clock.timeZone ? { user_location: { type: "approximate" as const, timezone: clock.timeZone } } : {}),
+                  },
+                ],
+              }
+            : {}),
+          reasoning: { effort: fast ? "low" : opts.effort, summary: "auto" },
           store: false,
         },
         { signal },

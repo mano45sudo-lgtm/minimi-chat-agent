@@ -6,10 +6,14 @@ import { distillTurn } from "./distill.ts";
 import { recall, renderContext, renderLedger } from "./memory.ts";
 import { SYSTEM_PROMPT } from "./prompt.ts";
 import { getProvider } from "./providers/index.ts";
-import type { AgentEvent } from "./providers/types.ts";
+import type { AgentEvent, TurnResult } from "./providers/types.ts";
 import { localDate, type UserClock } from "./time.ts";
+import { claimsToCheck, linkCitations, renderFallback, renderVerification, runChecks, wantsVerification } from "./verify.ts";
 
 export type { AgentEvent };
+
+/** Words that mean the answer depends on the world now, not just on what was said. */
+const NEEDS_FRESH_DATA = /\b(now|today|current(ly)?|latest|price|pricing|cost|news|release[ds]?|version)\b/i;
 
 export interface TurnInput {
   threadId: string | null;
@@ -52,16 +56,41 @@ export async function runTurn({ threadId, message, clock, provider: providerId, 
     { role: "assistant" as const, text: t.answer || "(no answer)" },
   ]);
 
-  // 3. The provider streams progress + text through `emit` and returns the cited answer.
-  const result = await provider.answer({
-    system: SYSTEM_PROMPT,
-    ledger: renderLedger(clock, thread.id),
-    history,
-    user: promptText,
-    clock,
-    signal,
-    emit,
-  });
+  // 3. Route. The shape of the question decides how much work it needs:
+  //    verify   - "still correct?" / "changed since?" with recorded claims → parallel
+  //               per-claim checks, then a no-search reply written from the results.
+  //    recall   - "what did I ask on 3 Nov?" → answerable from memory alone: fast model,
+  //               no search.
+  //    research - everything else → main model with its native search loop.
+  const searches: string[] = [];
+  const tap = (e: AgentEvent) => {
+    if (e.type === "search") searches.push(e.query);
+    emit(e);
+  };
+  const base = { system: SYSTEM_PROMPT, ledger: renderLedger(clock, thread.id), history, clock, signal, emit: tap };
+  const claims = claimsToCheck(r.turns);
+  const verify = claims.length > 0 && wantsVerification(message);
+  const memoryOnly = !verify && r.turns.length > 0 && r.refersToPast && !NEEDS_FRESH_DATA.test(message);
+
+  let result: TurnResult;
+  let sentText = promptText;
+  if (verify) {
+    emit({ type: "status", text: `Re-checking ${claims.length} recorded fact${claims.length > 1 ? "s" : ""} in parallel…` });
+    const checks = await runChecks(provider, claims, clock, signal, tap);
+    const { block, sources } = renderVerification(claims, checks, clock);
+    sentText = `${promptText}\n\n${block}`;
+    try {
+      const reply = await provider.answer({ ...base, user: sentText, search: false });
+      result = { ...reply, answer: linkCitations(reply.answer, sources), sources };
+    } catch (err) {
+      if (signal?.aborted) throw err;
+      console.warn("[verify] reply model failed, using deterministic summary:", describeError(err, providerId));
+      result = { answer: renderFallback(claims, checks, sources), sources, searches: [] };
+    }
+  } else {
+    result = await provider.answer({ ...base, user: promptText, search: !memoryOnly, fast: memoryOnly });
+  }
+  result.searches = [...new Set([...searches, ...result.searches])];
 
   if (result.refused) {
     emit({ type: "error", message: "I can't help with that request." });
@@ -78,7 +107,7 @@ export async function runTurn({ threadId, message, clock, provider: providerId, 
     createdAt: clock.now.getTime(),
     localDate: localDate(clock.now, clock.offsetMin),
     userText: message,
-    promptText,
+    promptText: sentText,
     answer: result.answer,
     sources: result.sources,
     searches: result.searches,

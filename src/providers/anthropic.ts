@@ -22,7 +22,29 @@ export function anthropicProvider(opts: { chatModel: string; memoryModel: string
     id: "anthropic",
     chatModel: opts.chatModel,
 
-    async answer({ system, ledger, history, user, clock, signal, emit }: TurnRequest): Promise<TurnResult> {
+    async answer({ system, ledger, history, user, clock, signal, emit, search = true, fast = false }: TurnRequest): Promise<TurnResult> {
+      const userLocation = clock.timeZone ? { user_location: { type: "approximate" as const, timezone: clock.timeZone } } : {};
+      // Fast mode (per-claim checks): the small model, low effort, basic search with a tight
+      // cap. Haiku doesn't take the dynamic-filtering search tool, progress updates or
+      // server-side fallbacks, so those are main-model only.
+      const modeParams = fast
+        ? {
+            model: opts.memoryModel,
+            max_tokens: 4000,
+            output_config: { effort: "low" as const },
+            ...(search ? { tools: [{ type: "web_search_20250305" as const, name: "web_search" as const, max_uses: 3, ...userLocation }] } : {}),
+          }
+        : {
+            model: opts.chatModel,
+            max_tokens: 32000,
+            betas: BETAS,
+            fallbacks: "default" as const,
+            thinking: { type: "adaptive" as const, display: "updates" as const },
+            output_config: { effort: opts.effort },
+            ...(search
+              ? { tools: [{ type: "web_search_20260209" as const, name: "web_search" as const, max_uses: opts.maxSearches, ...userLocation }] }
+              : {}),
+          };
       const messages: BetaMessageParam[] = [
         ...history.map((h) => ({ role: h.role, content: h.text })),
         { role: "user", content: user },
@@ -36,24 +58,11 @@ export function anthropicProvider(opts: { chatModel: string; memoryModel: string
       for (let i = 0; i <= MAX_CONTINUATIONS; i++) {
         const stream = client.beta.messages.stream(
           {
-            model: opts.chatModel,
-            max_tokens: 32000,
-            betas: BETAS,
-            fallbacks: "default",
-            thinking: { type: "adaptive", display: "updates" },
-            output_config: { effort: opts.effort },
+            ...modeParams,
             cache_control: { type: "ephemeral" }, // auto-cache the conversation prefix
             system: [
               { type: "text", text: system, cache_control: { type: "ephemeral" } },
-              { type: "text", text: ledger },
-            ],
-            tools: [
-              {
-                type: "web_search_20260209",
-                name: "web_search",
-                max_uses: opts.maxSearches,
-                ...(clock.timeZone ? { user_location: { type: "approximate" as const, timezone: clock.timeZone } } : {}),
-              },
+              ...(ledger ? [{ type: "text" as const, text: ledger }] : []),
             ],
             messages,
           },

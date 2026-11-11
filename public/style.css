@@ -94,6 +94,26 @@ header { display: flex; align-items: center; gap: 10px; padding: 12px 20px; bord
   margin-right: 6px; animation: pulse 1s infinite ease-in-out;
 }
 @keyframes pulse { 50% { opacity: .25; } }
+.checks { border: 1px solid var(--line); border-radius: 12px; margin-bottom: 12px; overflow: hidden; font-size: 13px; }
+.check {
+  display: grid; grid-template-columns: 22px minmax(0, 1.2fr) minmax(0, 1fr) minmax(0, 1.2fr); gap: 8px;
+  padding: 7px 12px; border-top: 1px solid var(--line); align-items: baseline;
+}
+.check:first-child { border-top: 0; }
+.check-icon { font-weight: 700; text-align: center; }
+.check-subject { font-weight: 600; }
+.check-then { color: var(--muted); }
+.check-now a { color: inherit; }
+.check.pending .check-icon { color: var(--accent); animation: pulse 1s infinite; }
+.check.pending .check-now { color: var(--muted); font-style: italic; }
+.check.unchanged .check-icon { color: #16a34a; }
+.check.changed { background: var(--accent-soft); }
+.check.changed .check-icon { color: var(--accent); }
+.check.unverified .check-icon, .check.unverified .check-now { color: var(--muted); }
+@media (max-width: 760px) {
+  .check { grid-template-columns: 22px 1fr; }
+  .check-then, .check-now { grid-column: 2; }
+}
 .status { font-size: 13px; color: var(--muted); font-style: italic; margin-bottom: 8px; min-height: 1em; }
 
 .answer { overflow-wrap: anywhere; }

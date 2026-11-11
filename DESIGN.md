@@ -17,16 +17,23 @@ Search quality is mostly a commodity now. Memory you can trust is what's actuall
 user msg ─► time.ts   resolve dates in user's tz ("last Tuesday" → 10 Nov, alt 3 Nov)
         ─► memory.ts  recall: turns on those dates  ∪  BM25 topic matches   (SQLite FTS5)
         ─► <context>  Now: Wed 11 Nov 14:05 IST · resolved dates · recalled turns + their claims
+        ─► route      verify   "still correct?" / "changed since?" + recorded claims
+                         └► verify.ts: 1 fast search-enabled check per claim, ALL IN PARALLEL,
+                            each row streamed as it lands → main model writes reply, no search
+                      recall   "what did I ask on 3 Nov?" → fast model, no search
+                      research everything else → main model + native web search loop
         ─► provider   Claude | GPT | Gemini | Groq, each with its vendor's native web search, streamed (SSE)
         ─► citations  normalised to numbered links; turn persisted
         ─► distill.ts (background, cheap model) summary · claims[] · entities · thread title
 ```
 
+- **The question decides the work, not the model.** The target questions ("is it still correct?", "has pricing changed since?") aren't open-ended research: we already know exactly which facts were stated, and when. So code fans out one small, fast, search-enabled check per stored claim, all at once. Each verdict streams into the UI as a live row (✓ unchanged / Δ changed / ? not verified), and the main model then writes the reply from those results with search off. Wall time is the slowest single check, not the sum of a serial search loop. On Groq, a model-driven loop spent 137 s on 16 serial searches; ten parallel checks took ~14 s and found two real price changes. The same move fixes correctness. A small model in a free loop claimed "I re-checked all seven" after one search. Here, code only allows "unchanged" or "changed" for a check that returned a source this turn. A check without evidence is "not verified", and the reply model is told to claim nothing beyond the results. If the reply model fails (rate limit, outage), the checks aren't thrown away: code renders the verdict table itself.
+
 - **Recall runs in code, before the model, not as a tool.** The brief says there's one tool, and this also saves a round trip on every memory question. Date references go through `chrono-node` plus rules for the past: a bare "Monday" means the most recent past Monday; "3 December" said in November means last year. "Last Tuesday" said on a Wednesday is genuinely ambiguous, so both readings are recalled and the matching record wins. Turns store the user's local date at write time, so "on 3 November" means their 3 November.
 - **Precision before recall.** A day's turns are narrowed by topic overlap (no "banana bread" in a Postgres answer). A dated question about the world ("AI news last Tuesday") recalls nothing. Topic-only recall needs past-pointing language or a strong match.
 - **Absence is said out loud.** When the user points to the past and nothing matches, the context says *"No conversations on record for Tuesday 20 October"* plus the earliest date on record. The prompt forbids inventing memories, then tells the agent to still be useful: say there's no record in one line, then make a clearly labeled best attempt. A judge with an empty history asking "on Monday we shortlisted 5 CRMs…" gets honesty plus a check of the likely candidates, not a made-up shortlist.
 - **A ledger is always in context**: one line per past thread (dates and title), in the system prompt. It lets the agent answer "what have we talked about?" and know where its memory ends.
-- **Distilled claims make "is it still correct?" checkable.** After each answer, Haiku extracts the concrete, time-sensitive facts the agent asserted (*"Neon Launch: $19/mo"*, with source). Later, the agent re-verifies each one and reports *still correct / changed (old → new, when) / couldn't verify*. This runs off the critical path: the user already has their answer.
+- **Distilled claims make "is it still correct?" checkable.** After each answer, a cheap model extracts the concrete, time-sensitive facts about the world that the agent asserted (*"Neon Launch: $19/mo"*, with source). Code drops meta-claims about the conversation, and merges restatements (same vendor and same figure). This runs off the critical path: the user already has their answer. A verification turn is itself distilled, so every re-check leaves a new dated observation.
 
 ## Why these choices
 
@@ -50,8 +57,8 @@ user msg ─► time.ts   resolve dates in user's tz ("last Tuesday" → 10 Nov,
 ## With another week
 
 1. **Evals first.** Build a dataset of multi-day scripted conversations (the three examples and variants), replayed with clock overrides, graded per turn on memory accuracy, freshness and citation support. Then tune the effort level, search caps and prompt against it.
-2. **Claim diffing as data.** Store a re-verification as a new dated observation of the same claim, so "what changed since Monday?" becomes a query over a time series instead of a fresh comparison.
+2. **Claim time series.** Re-checks already leave dated observations. Link them to the same claim ID, so "what changed since Monday?" becomes a query, and a same-day re-check is served from cache instantly.
 3. **Hybrid retrieval.** Add embeddings to BM25 with reciprocal-rank fusion, plus query rewriting for paraphrases ("DB hosting" ↔ "Postgres").
 4. **Watchlists.** "Tell me if any of these 5 CRMs change pricing" becomes a scheduled re-verification of stored claims.
 5. **Multi-user.** Auth, per-user stores, and a memory page where users can see, edit and forget what the agent remembers.
-6. **Latency routing.** A fast path (a small model, low effort) for chit-chat and memory-only questions, with the large model kept for research turns. Use the eval set to pick the default provider per route, rather than by taste.
+6. **Smarter routing.** Replace the regex router with a tiny classifier tuned on the eval set, and pick the provider per route by measured speed and accuracy rather than by taste.

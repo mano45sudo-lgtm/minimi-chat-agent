@@ -16,17 +16,17 @@ export function geminiProvider(opts: { chatModel: string; memoryModel: string; e
     id: "gemini",
     chatModel: opts.chatModel,
 
-    async answer({ system, ledger, history, user, signal, emit }: TurnRequest): Promise<TurnResult> {
+    async answer({ system, ledger, history, user, signal, emit, search = true, fast = false }: TurnRequest): Promise<TurnResult> {
       const stream = await ai.models.generateContentStream({
-        model: opts.chatModel,
+        model: fast ? opts.memoryModel : opts.chatModel,
         contents: [
           ...history.map((h) => ({ role: h.role === "assistant" ? "model" : "user", parts: [{ text: h.text }] })),
           { role: "user", parts: [{ text: user }] },
         ],
         config: {
-          systemInstruction: `${system}\n\n${ledger}`,
-          tools: [{ googleSearch: {} }],
-          thinkingConfig: { includeThoughts: true, thinkingLevel: LEVEL[opts.effort] },
+          systemInstruction: ledger ? `${system}\n\n${ledger}` : system,
+          ...(search ? { tools: [{ googleSearch: {} }] } : {}),
+          thinkingConfig: { includeThoughts: true, thinkingLevel: fast ? ThinkingLevel.LOW : LEVEL[opts.effort] },
           abortSignal: signal,
         },
       });

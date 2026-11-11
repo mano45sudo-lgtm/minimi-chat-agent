@@ -35,7 +35,8 @@ Requires Node ≥ 22.13 (it uses the built-in `node:sqlite`, so there's no nativ
 ```
 src/
   server.ts   HTTP: static UI, JSON API, SSE chat stream
-  agent.ts    one turn: recall → prompt → provider (streamed, native search) → persist
+  agent.ts    one turn: recall → route (verify | recall | research) → provider → persist
+  verify.ts   parallel per-claim re-checks for "still correct?" / "changed since?"
   providers/  types.ts (the contract + citation rendering), anthropic.ts, openai.ts, gemini.ts, groq.ts
   memory.ts   recall (dates + BM25), context block, conversation ledger
   time.ts     deterministic date resolution in the user's timezone

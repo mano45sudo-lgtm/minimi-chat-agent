@@ -14,6 +14,15 @@ export type AgentEvent =
   | { type: "search"; query: string }
   | { type: "results"; query: string; results: Source[]; error?: string }
   | { type: "text"; delta: string }
+  | { type: "checks"; items: Array<{ id: number; subject: string; then: string; date: string }> }
+  | {
+      type: "check";
+      id: number;
+      status: "unchanged" | "changed" | "unverified";
+      now: string;
+      changedOn: string | null;
+      sources: Source[];
+    }
   | { type: "final"; turnId: number; answer: string; sources: Source[]; model: string }
   | { type: "error"; message: string };
 
@@ -29,6 +38,10 @@ export interface TurnRequest {
   clock: UserClock;
   signal?: AbortSignal;
   emit: (e: AgentEvent) => void;
+  /** Allow web search this turn (default true). Memory-only and synthesis turns don't need it. */
+  search?: boolean;
+  /** Use the provider's small, fast model at low effort (per-claim checks, memory lookups). */
+  fast?: boolean;
 }
 
 export interface TurnResult {

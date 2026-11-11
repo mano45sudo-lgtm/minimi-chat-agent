@@ -33,13 +33,17 @@ message ─► time.ts    resolve "last Tuesday" / "3 Nov" in the user's timezon
 - **LangChain or a generic AI SDK:** it hides exactly what differs between vendors (search tools, citations, streams).
 - **Dumping all history into context:** slow, costly, and it buries the one relevant turn.
 
+## Evals
+
+`npm run eval` replays five scenarios against a real model, using an isolated database and back-dated memory: changed-since-last-Tuesday, "what did I ask on <date>, still correct?", memory-only, a shortlist that was never recorded, and a fresh fact. Code grades each one on the guarantees above, not with an LLM judge: right day recalled, verify path taken, no verdict without a source, no search when memory suffices, no invented memory. It also records time to first token. Provider rate limits are reported as "blocked", not scored. The first Groq run passed the core change-since scenario 6/6 in 5.9 s with 3 parallel checks. It also caught a real recall bug ("right now" pulled in today's unrelated chats), which is now fixed.
+
 ## Known limits
 
 Intent routing uses keyword patterns: a paraphrase may take the slower research path, which is still correct. The per-claim checks spend one small model call per fact. Live testing so far ran on Groq's free tier; the other adapters are typed against their SDKs but unexercised.
 
 ## With another week
 
-1. **Evals:** scripted multi-day conversations replayed with clock overrides, graded on memory accuracy, freshness and citation support. Then tune effort and prompts against them.
+1. **Grow the evals:** paraphrase variants per scenario (to stress the router), multi-provider runs, and repeated runs for variance. Then tune effort and prompts against the numbers.
 2. **Claim time series:** link re-checks to the same claim, so "what changed since Monday?" becomes a query and same-day re-checks come from cache.
 3. **Learned router** to replace the regexes, picking provider per route by measured speed and accuracy.
 4. **Hybrid retrieval** (BM25 + embeddings), **watchlists** (scheduled claim re-checks), **multi-user** auth with a user-editable memory page.

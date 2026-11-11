@@ -28,11 +28,14 @@ export interface Recall {
 
 export function recall(text: string, clock: UserClock, currentThreadId: string | null): Recall {
   const exclude = currentThreadId ?? undefined;
-  // "Is it still correct today?" anchors the *comparison*, not the memory lookup: drop
-  // today/now references when the message also points at another day.
+  const pastIntent = refersToPast(text);
+  // "right now" / "today" usually anchors the *question* ("latest version right now",
+  // "still correct today?"), not a memory lookup. Only "what did I ask today?" - past
+  // intent with no other date - makes "today" a memory reference.
   const allRefs = resolveDateRefs(text, clock);
   const isNow = (r: DateRef) => /^(today|now|right now|currently|tonight|this morning)$/i.test(r.phrase.trim());
-  const dateRefs = allRefs.some((r) => !isNow(r)) ? allRefs.filter((r) => !isNow(r)) : allRefs;
+  const onlyNow = allRefs.length > 0 && allRefs.every(isNow);
+  const dateRefs = allRefs.filter((r) => !isNow(r) || (onlyNow && pastIntent));
   const picked = new Map<number, Turn>();
   const emptyRefs: DateRef[] = [];
 
@@ -40,8 +43,6 @@ export function recall(text: string, clock: UserClock, currentThreadId: string |
   const query = ftsQuery(text);
   const topical = query ? store.searchTurns(query, 12, exclude) : [];
   const topicRank = new Map(topical.map((t, i) => [t.id, i]));
-
-  const pastIntent = refersToPast(text);
 
   for (const ref of dateRefs) {
     let onDay = [ref, ref.alternative]
@@ -99,6 +100,10 @@ export function renderContext(text: string, clock: UserClock, r: Recall): string
       first
         ? `No matching past conversation was found. Earliest conversation on record: ${humanDate(first)}.`
         : "There are no past conversations on record at all - this user's history is empty.",
+    );
+    // Restated here, next to the gap, because models under-weight the system prompt.
+    lines.push(
+      "Do not invent what was said. Say in one sentence that you have no record of it, then still help: search for the most likely candidates for the need described, label them as your assumption, and invite the user to share the real list.",
     );
   }
 

@@ -28,6 +28,7 @@ Requires Node ≥ 22.13 (it uses the built-in `node:sqlite`, so there's no nativ
 | `npm run dev` | Server with reload, on port 3000 |
 | `npm test` | Unit tests for date resolution and recall (no API key needed) |
 | `npm run typecheck` | `tsc --noEmit` |
+| `npm run eval` | End-to-end scenarios against a real model, graded by code (`-- --provider groq` to pick one) |
 | `npm run seed` | Optional demo history (needs API key) |
 
 ## Layout

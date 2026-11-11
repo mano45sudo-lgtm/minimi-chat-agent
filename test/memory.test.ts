@@ -66,6 +66,17 @@ test("missing memory is stated, not invented", () => {
   assert.match(ctx, /No conversations on record for Tuesday 20 October 2026/);
 });
 
+test('"right now" anchors the question, not a memory lookup', () => {
+  const at = new Date("2026-11-11T05:00:00Z").getTime();
+  const th = store.createThread(at);
+  store.insertTurn({ threadId: th.id, createdAt: at, localDate: "2026-11-11", userText: "Banana bread recipe", promptText: "x", answer: "Here is a stable recipe.", sources: [], searches: [] });
+  // Not a date reference for memory, so today's unrelated turns can't ride in on a shared word.
+  assert.equal(recall("What is the latest stable Node.js version right now?", clock, null).dateRefs.length, 0);
+  // ...but "what did I ask today?" still recalls today.
+  assert.ok(recall("What did I ask you today?", clock, null).turns.some((t) => /banana/i.test(t.userText)));
+  store.deleteThread(th.id);
+});
+
 test("questions about the world don't drag in memory", () => {
   const r = recall("What's the cheapest serverless Postgres right now?", clock, null);
   assert.equal(r.turns.length, 0);

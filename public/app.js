@@ -137,12 +137,102 @@ function addUser(text, when) {
 
 function addAssistant() {
   const m = el("div", "msg assistant");
-  const activity = el("div", "activity");
-  const status = el("div", "status");
   const answer = el("div", "answer");
-  m.append(activity, status, answer);
+  m.append(answer);
   log.append(m);
-  return { m, activity, status, answer };
+  return { m, answer, trace: makeTrace(m, answer) };
+}
+
+const CHEVRON = '<svg class="chev" width="13" height="13" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M4 6L8 10L12 6" stroke="currentColor" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+
+/**
+ * Reasoning trace: a collapsible timeline of what the agent did for this answer -
+ * memory recall, thinking notes, each web search and what it returned. Open while the
+ * agent works; collapses to a one-line summary once the answer starts streaming.
+ */
+function makeTrace(container, before) {
+  const d = el("details", "trace");
+  d.hidden = true;
+  d.open = true;
+  const summary = el("summary");
+  const title = el("span", "trace-title", "Reasoning…");
+  summary.append(title);
+  summary.insertAdjacentHTML("beforeend", CHEVRON);
+  const steps = el("div", "trace-steps");
+  d.append(summary, steps);
+  container.insertBefore(d, before);
+
+  const t0 = performance.now();
+  const byQuery = new Map();
+  let userToggled = false;
+  let searches = 0;
+  let finished = false;
+  summary.addEventListener("click", () => { userToggled = true; });
+
+  const add = (kind, ...nodes) => {
+    d.hidden = false;
+    const step = el("div", `step ${kind}`);
+    const rail = el("div", "rail");
+    rail.append(el("span", "dot"), el("span", "line"));
+    const body = el("div", "step-body");
+    body.append(...nodes);
+    step.append(rail, body);
+    steps.append(step);
+    return step;
+  };
+  const settle = () => { for (const s of steps.querySelectorAll(".step.live")) s.classList.remove("live"); };
+
+  return {
+    recall(text) { add("recall", text); },
+    thought(text) {
+      const last = steps.lastElementChild;
+      if (last?.classList.contains("thought")) last.querySelector(".step-body").textContent = text;
+      else add("thought", text);
+    },
+    search(query) {
+      settle();
+      searches++;
+      const q = el("q", null, query);
+      byQuery.set(query, add("search live", el("span", "verb", "Searched "), q));
+    },
+    results(query, results, error) {
+      const step = byQuery.get(query) ?? [...steps.querySelectorAll(".step.search")].pop();
+      if (!step) return;
+      step.classList.remove("live");
+      const hosts = [...new Set(results.map((r) => host(r.url)))].slice(0, 3);
+      const note = error ? ` · failed (${error})` : results.length ? ` · ${results.length} results · ${hosts.join(", ")}` : "";
+      if (note) step.querySelector(".step-body").append(el("span", "hosts", note));
+    },
+    note(text) { add("thought", text); },
+    /** The answer is streaming: fold the trace away so the reply is front and centre. */
+    answering() {
+      if (finished) return;
+      settle();
+      title.textContent = "Writing the answer…";
+      if (!userToggled) d.open = false;
+    },
+    done(failed) {
+      if (finished) return;
+      finished = true;
+      settle();
+      d.classList.add("done");
+      const secs = Math.max(1, Math.round((performance.now() - t0) / 1000));
+      const parts = [failed ? "Stopped" : "Done"];
+      if (searches) parts.push(`${searches} search${searches > 1 ? "es" : ""}`);
+      parts.push(`${secs}s`);
+      title.textContent = parts.join(" · ");
+      if (!userToggled) d.open = false;
+    },
+    /** Rebuild a finished trace from a stored turn (searches only; timings aren't kept). */
+    restore(queries) {
+      for (const q of queries) this.search(q);
+      settle();
+      finished = true;
+      d.classList.add("done");
+      d.open = false;
+      title.textContent = `Searched ${queries.length} quer${queries.length > 1 ? "ies" : "y"}`;
+    },
+  };
 }
 
 function renderSources(container, sources) {
@@ -215,10 +305,11 @@ async function openThread(id) {
     const when = new Date(t.createdAt).toLocaleString(undefined, { weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
     addUser(t.userText, when);
     const a = addAssistant();
-    if (t.searches.length) for (const q of t.searches) a.activity.append(el("div", "chip", "⌕ " + q));
+    if (t.searches.length) a.trace.restore(t.searches);
     a.answer.append(md(t.answer));
     renderSources(a.m, t.sources);
-    if (t.model) a.m.append(el("div", "answer-meta", t.model.split("/").pop()));
+    // stored as "provider/model", where the model id itself may contain a slash
+    if (t.model) a.m.append(el("div", "answer-meta", t.model.split("/").slice(1).join("/")));
   }
   log.scrollTop = log.scrollHeight;
   history.replaceState(null, "", location.search + "#" + id);
@@ -244,7 +335,7 @@ async function submit(text) {
   const a = addAssistant();
   a.answer.classList.add("streaming");
   let raw = "";
-  let liveChip = null;
+  let failed = false;
   controller = new AbortController();
   send.classList.add("stop"); send.setAttribute("aria-label", "Stop");
 
@@ -255,14 +346,13 @@ async function submit(text) {
         break;
       case "recall": {
         const n = e.turns.length;
-        const label = n
-          ? `↺ Recalled ${n} past message${n > 1 ? "s" : ""} · ${[...new Set(e.turns.map((t) => fmtDate(t.date)))].join(", ")}`
-          : `↺ No conversation on record for ${e.dates.map((d) => d.split("..").map(fmtDate).join(" – ")).join(" or ")}`;
-        a.activity.append(el("div", "chip recall", label));
+        a.trace.recall(n
+          ? `Recalled ${n} past message${n > 1 ? "s" : ""} from ${[...new Set(e.turns.map((t) => fmtDate(t.date)))].join(", ")}`
+          : `No conversation on record for ${e.dates.map((d) => d.split("..").map(fmtDate).join(" – ")).join(" or ")}`);
         break;
       }
       case "status":
-        a.status.textContent = e.text;
+        a.trace.thought(e.text);
         break;
       case "checks": {
         // One live row per recorded fact; each fills in as its parallel check lands.
@@ -299,24 +389,24 @@ async function submit(text) {
         break;
       }
       case "search":
-        liveChip?.classList.remove("live");
-        liveChip = el("div", "chip live", "⌕ " + e.query);
-        a.activity.append(liveChip);
+        a.trace.search(e.query);
         break;
       case "results":
-        liveChip?.classList.remove("live");
+        a.trace.results(e.query, e.results, e.error);
         break;
       case "text":
         raw += e.delta;
-        a.status.textContent = "";
+        a.trace.answering();
         a.answer.replaceChildren(md(raw));
         break;
       case "final":
+        a.trace.done(false);
         a.answer.replaceChildren(md(e.answer));
         renderSources(a.m, e.sources);
         a.m.append(el("div", "answer-meta", e.model));
         break;
       case "error":
+        failed = true;
         a.answer.append(el("p", "error", e.message));
         break;
     }
@@ -355,8 +445,7 @@ async function submit(text) {
     if (err.name !== "AbortError") a.answer.append(el("p", "error", "Connection lost. " + err.message));
   } finally {
     a.answer.classList.remove("streaming");
-    a.status.textContent = "";
-    liveChip?.classList.remove("live");
+    a.trace.done(failed || !raw);
     controller = null;
     send.classList.remove("stop"); send.setAttribute("aria-label", "Send");
     syncSubmit();

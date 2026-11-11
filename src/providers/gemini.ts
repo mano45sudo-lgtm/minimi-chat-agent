@@ -16,7 +16,7 @@ export function geminiProvider(opts: { chatModel: string; memoryModel: string; e
     id: "gemini",
     chatModel: opts.chatModel,
 
-    async answer({ system, ledger, history, user, signal, emit, search = true, fast = false }: TurnRequest): Promise<TurnResult> {
+    async answer({ system, ledger, history, user, signal, emit, search = true, fast = false, effort }: TurnRequest): Promise<TurnResult> {
       const stream = await ai.models.generateContentStream({
         model: fast ? opts.memoryModel : opts.chatModel,
         contents: [
@@ -26,7 +26,7 @@ export function geminiProvider(opts: { chatModel: string; memoryModel: string; e
         config: {
           systemInstruction: ledger ? `${system}\n\n${ledger}` : system,
           ...(search ? { tools: [{ googleSearch: {} }] } : {}),
-          thinkingConfig: { includeThoughts: true, thinkingLevel: fast ? ThinkingLevel.LOW : LEVEL[opts.effort] },
+          thinkingConfig: { includeThoughts: true, thinkingLevel: fast ? ThinkingLevel.LOW : LEVEL[effort ?? opts.effort] },
           abortSignal: signal,
         },
       });

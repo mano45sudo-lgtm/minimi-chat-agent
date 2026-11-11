@@ -40,6 +40,8 @@ export interface TurnRequest {
   emit: (e: AgentEvent) => void;
   /** Allow web search this turn (default true). Memory-only and synthesis turns don't need it. */
   search?: boolean;
+  /** Per-message reasoning depth chosen in the UI; falls back to the configured default. */
+  effort?: "low" | "medium" | "high";
   /** Use the provider's small, fast model at low effort (per-claim checks, memory lookups). */
   fast?: boolean;
 }

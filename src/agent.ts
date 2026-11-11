@@ -21,11 +21,13 @@ export interface TurnInput {
   clock: UserClock;
   /** anthropic | openai | gemini; defaults to PROVIDER / first configured. */
   provider?: string | null;
+  /** Per-message reasoning depth from the UI. */
+  effort?: "low" | "medium" | "high";
   signal?: AbortSignal;
   emit: (e: AgentEvent) => void;
 }
 
-export async function runTurn({ threadId, message, clock, provider: providerId, signal, emit }: TurnInput): Promise<void> {
+export async function runTurn({ threadId, message, clock, provider: providerId, effort, signal, emit }: TurnInput): Promise<void> {
   const provider = getProvider(providerId);
   if (!provider) {
     emit({ type: "error", message: "No model provider is configured. Set an API key in .env (see .env.example) and restart." });
@@ -67,7 +69,7 @@ export async function runTurn({ threadId, message, clock, provider: providerId, 
     if (e.type === "search") searches.push(e.query);
     emit(e);
   };
-  const base = { system: SYSTEM_PROMPT, ledger: renderLedger(clock, thread.id), history, clock, signal, emit: tap };
+  const base = { system: SYSTEM_PROMPT, ledger: renderLedger(clock, thread.id), history, clock, signal, effort, emit: tap };
   const claims = claimsToCheck(r.turns);
   const verify = claims.length > 0 && wantsVerification(message);
   const memoryOnly = !verify && r.turns.length > 0 && r.refersToPast && !NEEDS_FRESH_DATA.test(message);

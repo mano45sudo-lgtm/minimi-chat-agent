@@ -19,7 +19,7 @@ export function groqProvider(opts: { chatModel: string; memoryModel: string; eff
     id: "groq",
     chatModel: opts.chatModel,
 
-    async answer({ system, ledger, history, user, signal, emit, search = true, fast = false }: TurnRequest): Promise<TurnResult> {
+    async answer({ system, ledger, history, user, signal, emit, search = true, fast = false, effort }: TurnRequest): Promise<TurnResult> {
       const stream = await client.chat.completions.create(
         {
           model: fast ? opts.memoryModel : opts.chatModel,
@@ -29,7 +29,7 @@ export function groqProvider(opts: { chatModel: string; memoryModel: string; eff
             { role: "user", content: user },
           ],
           ...(search ? { tools: [{ type: "browser_search" as const }], tool_choice: "auto" as const } : {}),
-          reasoning_effort: fast ? "low" : opts.effort,
+          reasoning_effort: fast ? "low" : (effort ?? opts.effort),
           include_reasoning: true,
           max_completion_tokens: 16000,
           stream: true,

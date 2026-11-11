@@ -16,7 +16,7 @@ export function openaiProvider(opts: { chatModel: string; memoryModel: string; e
     id: "openai",
     chatModel: opts.chatModel,
 
-    async answer({ system, ledger, history, user, clock, signal, emit, search = true, fast = false }: TurnRequest): Promise<TurnResult> {
+    async answer({ system, ledger, history, user, clock, signal, emit, search = true, fast = false, effort }: TurnRequest): Promise<TurnResult> {
       const searches: string[] = [];
       let summary = "";
 
@@ -36,7 +36,7 @@ export function openaiProvider(opts: { chatModel: string; memoryModel: string; e
                 ],
               }
             : {}),
-          reasoning: { effort: fast ? "low" : opts.effort, summary: "auto" },
+          reasoning: { effort: fast ? "low" : (effort ?? opts.effort), summary: "auto" },
           store: false,
         },
         { signal },

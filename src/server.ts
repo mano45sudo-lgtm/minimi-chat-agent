@@ -54,7 +54,8 @@ async function chat(req: IncomingMessage, res: ServerResponse) {
     message?: string;
     timeZone?: string;
     offsetMin?: number;
-    provider?: string; // anthropic | openai | gemini
+    provider?: string; // anthropic | openai | gemini | groq
+    effort?: string; // low | medium | high
     now?: string; // optional clock override, for demos/tests of memory over time
   };
   const message = (body.message ?? "").trim();
@@ -81,6 +82,7 @@ async function chat(req: IncomingMessage, res: ServerResponse) {
         timeZone: body.timeZone,
       },
       provider: body.provider,
+      effort: body.effort === "low" || body.effort === "medium" || body.effort === "high" ? body.effort : undefined,
       signal: abort.signal,
       emit,
     });

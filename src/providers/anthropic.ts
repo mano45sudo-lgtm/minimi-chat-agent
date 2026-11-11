@@ -22,7 +22,7 @@ export function anthropicProvider(opts: { chatModel: string; memoryModel: string
     id: "anthropic",
     chatModel: opts.chatModel,
 
-    async answer({ system, ledger, history, user, clock, signal, emit, search = true, fast = false }: TurnRequest): Promise<TurnResult> {
+    async answer({ system, ledger, history, user, clock, signal, emit, search = true, fast = false, effort }: TurnRequest): Promise<TurnResult> {
       const userLocation = clock.timeZone ? { user_location: { type: "approximate" as const, timezone: clock.timeZone } } : {};
       // Fast mode (per-claim checks): the small model, low effort, basic search with a tight
       // cap. Haiku doesn't take the dynamic-filtering search tool, progress updates or
@@ -40,7 +40,7 @@ export function anthropicProvider(opts: { chatModel: string; memoryModel: string
             betas: BETAS,
             fallbacks: "default" as const,
             thinking: { type: "adaptive" as const, display: "updates" as const },
-            output_config: { effort: opts.effort },
+            output_config: { effort: effort ?? opts.effort },
             ...(search
               ? { tools: [{ type: "web_search_20260209" as const, name: "web_search" as const, max_uses: opts.maxSearches, ...userLocation }] }
               : {}),

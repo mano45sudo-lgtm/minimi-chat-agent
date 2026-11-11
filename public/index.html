@@ -19,7 +19,6 @@
       <header>
         <button id="toggle-sidebar" type="button" aria-label="Toggle conversations">☰</button>
         <span id="title">New chat</span>
-        <select id="provider" aria-label="Model provider" hidden></select>
       </header>
       <section id="log" aria-live="polite">
         <div id="empty">
@@ -33,8 +32,33 @@
         </div>
       </section>
       <form id="composer">
-        <textarea id="input" rows="1" placeholder="Message Minimi…" autofocus></textarea>
-        <button id="send" type="submit" aria-label="Send">↑</button>
+        <div class="composer-card">
+          <textarea id="input" rows="1" placeholder="Ask anything…" aria-label="Message" autofocus></textarea>
+          <div class="composer-bar">
+            <div class="model-picker">
+              <button type="button" id="model-trigger" class="model-trigger" aria-haspopup="menu" aria-expanded="false" hidden>
+                <span class="provider-badge" id="model-badge" aria-hidden="true"></span>
+                <span class="model-label"><span id="model-name"></span><span id="model-effort" class="model-effort"></span></span>
+                <svg class="chevron" width="13" height="13" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M4 6L8 10L12 6" stroke="currentColor" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              </button>
+              <div id="model-menu" class="popover" role="menu" aria-label="Model and effort">
+                <div class="menu-label">Model</div>
+                <div id="model-list" class="model-list"></div>
+                <div class="menu-label">Effort</div>
+                <div id="effort-seg" class="effort-seg" role="radiogroup" aria-label="Effort">
+                  <button type="button" role="radio" data-effort="low">Low</button>
+                  <button type="button" role="radio" data-effort="medium">Medium</button>
+                  <button type="button" role="radio" data-effort="high">High</button>
+                </div>
+                <p class="menu-hint">Lower is faster; higher researches deeper.</p>
+              </div>
+            </div>
+            <button id="send" type="submit" class="submit-btn" aria-label="Send">
+              <svg class="icon-send" width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M8 12.8V3.2M8 3.2L3.8 7.4M8 3.2L12.2 7.4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              <svg class="icon-stop" width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><rect x="1" y="1" width="10" height="10" rx="2.5" fill="currentColor"/></svg>
+            </button>
+          </div>
+        </div>
       </form>
     </main>
   </body>

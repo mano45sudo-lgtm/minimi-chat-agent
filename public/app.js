@@ -15,22 +15,84 @@ if (clockOverride) {
 let threadId = null;
 let controller = null;
 
-// ---------- provider picker (only providers with a key on the server are listed) ----------
-const picker = $("#provider");
-const LABELS = { anthropic: "Claude", openai: "OpenAI", gemini: "Gemini", groq: "Groq" };
-async function loadProviders() {
-  const providers = await (await fetch("/api/providers")).json();
-  let saved = null;
-  try { saved = localStorage.getItem("provider"); } catch {}
-  picker.replaceChildren(...providers.map((p) => {
-    const o = el("option", null, `${LABELS[p.id] ?? p.id} · ${p.model}`);
-    o.value = p.id;
-    o.selected = saved ? p.id === saved : p.default;
-    return o;
-  }));
-  picker.hidden = providers.length < 2;
+// ---------- model + effort picker (only providers with a key on the server are listed) ----------
+const PROVIDERS = {
+  anthropic: { label: "Claude", mono: "C", color: "#d97757" },
+  openai: { label: "OpenAI", mono: "O", color: "#10a37f" },
+  gemini: { label: "Gemini", mono: "G", color: "#4f7cff" },
+  groq: { label: "Groq", mono: "Q", color: "#f55036" },
+};
+const EFFORT_LABEL = { low: "Low", medium: "Medium", high: "High" };
+const trigger = $("#model-trigger");
+const menu = $("#model-menu");
+const choice = { provider: null, effort: "medium", providers: [] };
+
+const store = {
+  get(k) { try { return localStorage.getItem(k); } catch { return null; } },
+  set(k, v) { try { localStorage.setItem(k, v); } catch {} },
+};
+
+function badge(node, id) {
+  const p = PROVIDERS[id] ?? { mono: id?.[0]?.toUpperCase() ?? "?", color: "#666" };
+  node.textContent = p.mono;
+  node.style.setProperty("--badge", p.color);
 }
-picker.addEventListener("change", () => { try { localStorage.setItem("provider", picker.value); } catch {} });
+
+function renderPicker() {
+  const current = choice.providers.find((p) => p.id === choice.provider);
+  if (!current) { trigger.hidden = true; return; }
+  trigger.hidden = false;
+  badge($("#model-badge"), current.id);
+  $("#model-name").textContent = PROVIDERS[current.id]?.label ?? current.id;
+  $("#model-effort").textContent = EFFORT_LABEL[choice.effort];
+  trigger.title = `${current.model} · ${EFFORT_LABEL[choice.effort]} effort`;
+
+  const list = $("#model-list");
+  list.replaceChildren(...choice.providers.map((p) => {
+    const row = el("button", "model-row");
+    row.type = "button";
+    row.setAttribute("role", "menuitemradio");
+    row.setAttribute("aria-checked", String(p.id === choice.provider));
+    const b = el("span", "provider-badge"); badge(b, p.id);
+    const names = el("span", "names");
+    names.append(el("b", null, PROVIDERS[p.id]?.label ?? p.id), el("small", null, p.model));
+    const tick = el("span", "tick");
+    tick.innerHTML = '<svg width="15" height="15" viewBox="0 0 16 16" fill="none"><path d="M3.2 8.5L6.5 11.8L13 4.5" stroke="currentColor" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+    row.append(b, names, tick);
+    row.onclick = () => { choice.provider = p.id; store.set("provider", p.id); renderPicker(); setMenu(false); input.focus(); };
+    return row;
+  }));
+  for (const btn of $("#effort-seg").querySelectorAll("button")) {
+    btn.setAttribute("aria-checked", String(btn.dataset.effort === choice.effort));
+  }
+}
+
+function setMenu(open) {
+  menu.classList.toggle("open", open);
+  trigger.setAttribute("aria-expanded", String(open));
+  if (open) menu.querySelector('[aria-checked="true"]')?.focus();
+}
+
+async function loadProviders() {
+  choice.providers = await (await fetch("/api/providers")).json();
+  const saved = store.get("provider");
+  choice.provider = choice.providers.some((p) => p.id === saved)
+    ? saved
+    : (choice.providers.find((p) => p.default) ?? choice.providers[0])?.id ?? null;
+  const savedEffort = store.get("effort");
+  if (EFFORT_LABEL[savedEffort]) choice.effort = savedEffort;
+  renderPicker();
+}
+
+trigger.addEventListener("click", (e) => { e.stopPropagation(); setMenu(!menu.classList.contains("open")); });
+menu.addEventListener("click", (e) => e.stopPropagation());
+for (const btn of $("#effort-seg").querySelectorAll("button")) {
+  btn.onclick = () => { choice.effort = btn.dataset.effort; store.set("effort", choice.effort); renderPicker(); };
+}
+document.addEventListener("click", () => setMenu(false));
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape" && menu.classList.contains("open")) { setMenu(false); trigger.focus(); }
+});
 loadProviders();
 
 // ---------- rendering helpers ----------
@@ -184,7 +246,7 @@ async function submit(text) {
   let raw = "";
   let liveChip = null;
   controller = new AbortController();
-  send.classList.add("stop"); send.textContent = "■";
+  send.classList.add("stop"); send.setAttribute("aria-label", "Stop");
 
   const handle = (e) => {
     switch (e.type) {
@@ -269,7 +331,8 @@ async function submit(text) {
       body: JSON.stringify({
         threadId,
         message: text,
-        provider: picker.value || undefined,
+        provider: choice.provider || undefined,
+        effort: choice.effort,
         timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
         offsetMin: -new Date(clockOverride || Date.now()).getTimezoneOffset(),
         now: clockOverride ? new Date(clockOverride).toISOString() : undefined,
@@ -295,7 +358,8 @@ async function submit(text) {
     a.status.textContent = "";
     liveChip?.classList.remove("live");
     controller = null;
-    send.classList.remove("stop"); send.textContent = "↑";
+    send.classList.remove("stop"); send.setAttribute("aria-label", "Send");
+    syncSubmit();
     loadThreads();
     // Title is distilled in the background; refresh once it is likely ready.
     setTimeout(() => threadId && refreshTitle(), 4000);
@@ -312,7 +376,10 @@ async function refreshTitle() {
 function autosize() {
   input.style.height = "auto";
   input.style.height = Math.min(input.scrollHeight, 200) + "px";
+  input.style.overflowY = input.scrollHeight > 200 ? "auto" : "hidden";
+  syncSubmit();
 }
+function syncSubmit() { send.classList.toggle("ready", input.value.trim().length > 0); }
 input.addEventListener("input", autosize);
 input.addEventListener("keydown", (e) => {
   if (e.key === "Enter" && !e.shiftKey && !e.isComposing) { e.preventDefault(); submit(input.value); }
